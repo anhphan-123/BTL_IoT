@@ -34,40 +34,43 @@ function Dashboard({
       .reverse();
 
   const chartData = {
-    labels: chartRows.map(
-      (item) =>
-        item.time?.split(" ")[1] || ""
-    ),
+  labels: chartRows.map(
+    (item) =>
+      item.time?.split(" ")[1] || ""
+  ),
 
-    datasets: [
-      {
-        label: "Nhiệt độ °C",
+  datasets: [
+    {
+      label: "Độ ẩm %",
+      data: chartRows.map(
+        (item) => item.humidity
+      ),
+      borderColor: "#22c55e",
+      backgroundColor: "#22c55e",
+      tension: 0.3,
+    },
 
-        data: chartRows.map(
-          (item) =>
-            item.temperature
-        ),
-      },
+    {
+      label: "Nhiệt độ °C",
+      data: chartRows.map(
+        (item) => item.temperature
+      ),
+      borderColor: "#ef4444",
+      backgroundColor: "#ef4444",
+      tension: 0.3,
+    },
 
-      {
-        label: "Độ ẩm %",
-
-        data: chartRows.map(
-          (item) =>
-            item.humidity
-        ),
-      },
-
-      {
-        label: "Ánh sáng lux",
-
-        data: chartRows.map(
-          (item) =>
-            item.light
-        ),
-      },
-    ],
-  };
+    {
+      label: "Ánh sáng lux",
+      data: chartRows.map(
+        (item) => item.light
+      ),
+      borderColor: "#eab308",
+      backgroundColor: "#eab308",
+      tension: 0.3,
+    },
+  ],
+};
 
   return (
     <div>
@@ -162,21 +165,6 @@ function Dashboard({
             device="fan"
             state={devices.fan}
             loading={loading.fan}
-            online={online}
-            onClick={
-              controlDevice
-            }
-          />
-
-          <Device
-            name="Điều hòa"
-            device="air_conditioner"
-            state={
-              devices.air_conditioner
-            }
-            loading={
-              loading.air_conditioner
-            }
             online={online}
             onClick={
               controlDevice

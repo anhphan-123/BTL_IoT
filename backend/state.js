@@ -5,8 +5,7 @@ const hardwareStatus = {
 
 const deviceStates = {
   light: false,
-  fan: false,
-  air_conditioner: false
+  fan: false
 };
 
 const pendingCommands = new Map();

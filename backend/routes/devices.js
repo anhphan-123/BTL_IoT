@@ -56,11 +56,10 @@ router.post(
         ).toUpperCase();
 
 
-      const allowedDevices = [
-        "light",
-        "fan",
-        "air_conditioner"
-      ];
+const allowedDevices = [
+  "light",
+  "fan"
+];
 
 
       if (

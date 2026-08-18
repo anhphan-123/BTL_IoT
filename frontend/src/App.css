@@ -421,3 +421,153 @@ th {
 
   display: block;
 }
+/* =========================
+   SEARCH / FILTER
+========================= */
+
+.search-panel {
+  margin-bottom: 20px;
+}
+
+.search-form,
+.history-filter {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 10px;
+
+  align-items: center;
+}
+
+.search-form input,
+.search-form select,
+.history-filter input,
+.history-filter select {
+  height: 40px;
+
+  border: 1px solid #d1d5db;
+
+  border-radius: 8px;
+
+  padding: 0 12px;
+
+  background: white;
+
+  font-size: 14px;
+}
+
+.search-form input {
+  min-width: 330px;
+}
+
+.history-filter input,
+.history-filter select {
+  min-width: 140px;
+}
+
+.search-form button,
+.history-filter button,
+.pagination button {
+  height: 40px;
+
+  padding: 0 16px;
+
+  border: none;
+
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  background: #2563eb;
+
+  color: white;
+
+  font-weight: 600;
+}
+
+.search-form button[type="button"],
+.history-filter button[type="button"] {
+  background: #6b7280;
+}
+
+
+/* =========================
+   SORT
+========================= */
+
+th {
+  cursor: pointer;
+
+  user-select: none;
+}
+
+
+/* =========================
+   PAGINATION
+========================= */
+
+.pagination {
+  margin-top: 20px;
+
+  display: flex;
+
+  justify-content: center;
+  align-items: center;
+
+  gap: 20px;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+
+  cursor: not-allowed;
+}
+.student-info {
+  width: 100%;
+  max-width: 420px;
+
+  margin: 18px auto 24px;
+
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.student-info-row {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  align-items: center;
+
+  min-height: 42px;
+
+  padding: 0 14px;
+}
+
+/* dòng đầu xám như ảnh */
+.student-info-row:nth-child(odd) {
+  background: #f1f1f1;
+}
+
+/* dòng sau trắng */
+.student-info-row:nth-child(even) {
+  background: white;
+}
+
+.student-label {
+  text-align: left;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  color: #222;
+}
+
+.student-value {
+  text-align: right;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  color: #222;
+}

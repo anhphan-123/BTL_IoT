@@ -11,31 +11,71 @@ import Profile from "./pages/Profile";
 const API = "http://localhost:3000";
 
 function App() {
-  const [page, setPage] = useState("dashboard");
+  // =====================================================
+  // PAGE
+  // =====================================================
 
-  const [sensor, setSensor] = useState({
-    temperature: 0,
-    humidity: 0,
-    light: 0,
-  });
+  const [page, setPage] =
+    useState("dashboard");
 
-  const [sensorRows, setSensorRows] = useState([]);
+  // =====================================================
+  // SENSOR HIỆN TẠI
+  // =====================================================
 
-  const [online, setOnline] = useState(false);
+  const [sensor, setSensor] =
+    useState({
+      temperature: 0,
+      humidity: 0,
+      light: 0,
+    });
 
-  const [devices, setDevices] = useState({
-    light: false,
-    fan: false,
-    air_conditioner: false,
-  });
+  // Dùng cho chart Dashboard
+  const [sensorRows, setSensorRows] =
+    useState([]);
 
-  const [loading, setLoading] = useState({
-    light: false,
-    fan: false,
-    air_conditioner: false,
-  });
+  // Mỗi khi có sensor mới
+  // DataSensor sẽ tự query DB lại
+  const [
+    sensorRefreshKey,
+    setSensorRefreshKey,
+  ] = useState(0);
 
-  const [actionRows, setActionRows] = useState([]);
+  // =====================================================
+  // ESP STATUS
+  // =====================================================
+
+  const [online, setOnline] =
+    useState(false);
+
+  // =====================================================
+  // DEVICE STATES
+  // CHỈ CÒN ĐÈN + QUẠT
+  // =====================================================
+
+  const [devices, setDevices] =
+    useState({
+      light: false,
+      fan: false,
+    });
+
+  // =====================================================
+  // LOADING DEVICE
+  // =====================================================
+
+  const [loading, setLoading] =
+    useState({
+      light: false,
+      fan: false,
+    });
+
+  // =====================================================
+  // ACTIVITY HISTORY REFRESH
+  // =====================================================
+
+  const [
+    actionRefreshKey,
+    setActionRefreshKey,
+  ] = useState(0);
 
   // =====================================================
   // LOAD DỮ LIỆU BAN ĐẦU
@@ -47,66 +87,94 @@ function App() {
 
   async function loadInitialData() {
     try {
-      const latestResponse = await fetch(
-        `${API}/api/sensors/latest`
-      );
+      // =========================
+      // SENSOR MỚI NHẤT
+      // =========================
 
-      const latest = await latestResponse.json();
+      const latestResponse =
+        await fetch(
+          `${API}/api/sensors/latest`
+        );
+
+      const latest =
+        await latestResponse.json();
 
       if (latest) {
         setSensor(latest);
       }
 
-      const sensorResponse = await fetch(
-        `${API}/api/sensors?limit=50`
+      // =========================
+      // 50 SENSOR CHO CHART
+      // =========================
+
+      const sensorResponse =
+        await fetch(
+          `${API}/api/sensors?page=1&limit=50`
+        );
+
+      const sensorData =
+        await sensorResponse.json();
+
+      setSensorRows(
+        sensorData.rows || []
       );
 
-      const sensorData = await sensorResponse.json();
+      // =========================
+      // ESP ONLINE / OFFLINE
+      // =========================
 
-      setSensorRows(sensorData.rows || []);
+      const statusResponse =
+        await fetch(
+          `${API}/api/system/status`
+        );
 
-      const statusResponse = await fetch(
-        `${API}/api/system/status`
+      const statusData =
+        await statusResponse.json();
+
+      setOnline(
+        statusData.isOnline
       );
 
-      const statusData = await statusResponse.json();
+      // =========================
+      // DEVICE STATES
+      // =========================
 
-      setOnline(statusData.isOnline);
+      const deviceResponse =
+        await fetch(
+          `${API}/api/devices/states`
+        );
 
-      const deviceResponse = await fetch(
-        `${API}/api/devices/states`
-      );
+      const deviceData =
+        await deviceResponse.json();
 
-      const deviceData = await deviceResponse.json();
+      setDevices({
+        light:
+          deviceData.light || false,
 
-      setDevices(deviceData);
+        fan:
+          deviceData.fan || false,
+      });
 
-      await loadActions();
     } catch (error) {
-      console.error("Load initial error:", error);
-    }
-  }
-
-  async function loadActions() {
-    try {
-      const response = await fetch(
-        `${API}/api/actions?limit=50`
+      console.error(
+        "Load initial error:",
+        error
       );
-
-      const data = await response.json();
-
-      setActionRows(data.rows || []);
-    } catch (error) {
-      console.error("Load actions error:", error);
     }
   }
 
   // =====================================================
   // SOCKET.IO
-  // CHỈ ĐĂNG KÝ 1 LẦN Ở APP
+  //
+  // CHỈ ĐĂNG KÝ SOCKET 1 LẦN Ở APP
+  // KHÔNG TẠO SOCKET RIÊNG TRONG CÁC PAGE
   // =====================================================
 
   useEffect(() => {
+    // =========================
+    // SOCKET CONNECT
+    // =========================
+
     function handleConnect() {
       console.log(
         "Socket connected:",
@@ -114,27 +182,58 @@ function App() {
       );
     }
 
+    // =========================
+    // SOCKET DISCONNECT
+    // =========================
+
     function handleDisconnect() {
-      console.log("Socket disconnected");
+      console.log(
+        "Socket disconnected"
+      );
     }
 
-    function handleSensor(data) {
-      console.log("Realtime sensor:", data);
+    // =========================
+    // SENSOR REALTIME
+    // =========================
 
+    function handleSensor(data) {
+      console.log(
+        "Realtime sensor:",
+        data
+      );
+
+      // Sensor hiện tại
       setSensor(data);
 
+      // Cập nhật chart Dashboard
       setSensorRows((old) => {
-        // newest ở trên
         const updated = [
           data,
+
           ...old.filter(
-            (item) => item.id !== data.id
+            (item) =>
+              item.id !== data.id
           ),
         ];
 
-        return updated.slice(0, 50);
+        // Dashboard chỉ cần
+        // tối đa 50 bản ghi
+        return updated.slice(
+          0,
+          50
+        );
       });
+
+      // Báo cho DataSensor:
+      // DB vừa có record mới
+      setSensorRefreshKey(
+        (old) => old + 1
+      );
     }
+
+    // =========================
+    // ESP ONLINE / OFFLINE
+    // =========================
 
     function handleStatus(data) {
       console.log(
@@ -142,50 +241,100 @@ function App() {
         data.isOnline
       );
 
-      setOnline(data.isOnline);
+      setOnline(
+        data.isOnline
+      );
     }
 
-    function handleDeviceStates(data) {
+    // =========================
+    // DEVICE STATE
+    // =========================
+
+    function handleDeviceStates(
+      data
+    ) {
       console.log(
         "Device states:",
         data
       );
 
-      setDevices(data);
+      setDevices({
+        light:
+          data.light || false,
+
+        fan:
+          data.fan || false,
+      });
     }
 
-function handleDeviceResponse(data) {
-  console.log(
-    "Device response:",
-    data
-  );
+    // =========================
+    // DEVICE RESPONSE
+    // SUCCESS / FAILED
+    // =========================
 
-  // Dù SUCCESS hay FAILED
-  // đều phải kết thúc loading
-  setLoading((old) => ({
-    ...old,
-    [data.device]: false,
-  }));
+    function handleDeviceResponse(
+      data
+    ) {
+      console.log(
+        "Device response:",
+        data
+      );
 
-  if (data.status === "SUCCESS") {
-    setDevices((old) => ({
-      ...old,
-      [data.device]:
-        data.action === "ON",
-    }));
-  }
+      // =================================
+      // SUCCESS HOẶC FAILED
+      // ĐỀU PHẢI TẮT LOADING
+      // =================================
 
-  if (data.status === "FAILED") {
-    console.log(
-      `${data.device} điều khiển thất bại`
-    );
+      setLoading((old) => ({
+        ...old,
 
-    // KHÔNG đổi devices
-    // → giữ trạng thái cũ
-  }
+        [data.device]:
+          false,
+      }));
 
-  loadActions();
-}
+      // =================================
+      // SUCCESS
+      // MỚI ĐƯỢC ĐỔI TRẠNG THÁI
+      // =================================
+
+      if (
+        data.status ===
+        "SUCCESS"
+      ) {
+        setDevices((old) => ({
+          ...old,
+
+          [data.device]:
+            data.action === "ON",
+        }));
+      }
+
+      // =================================
+      // FAILED
+      // GIỮ NGUYÊN TRẠNG THÁI CŨ
+      // =================================
+
+      if (
+        data.status ===
+        "FAILED"
+      ) {
+        console.log(
+          `${data.device} điều khiển thất bại`
+        );
+      }
+
+      // =================================
+      // REFRESH ACTIVITY HISTORY
+      // =================================
+
+      setActionRefreshKey(
+        (old) => old + 1
+      );
+    }
+
+    // =================================================
+    // REGISTER EVENTS
+    // =================================================
 
     socket.on(
       "connect",
@@ -217,13 +366,18 @@ function handleDeviceResponse(data) {
       handleDeviceResponse
     );
 
-    // nếu socket đã connect trước useEffect
+    // Socket có thể đã connect
+    // trước khi useEffect chạy
     if (socket.connected) {
       console.log(
         "Socket already connected:",
         socket.id
       );
     }
+
+    // =================================================
+    // CLEANUP
+    // =================================================
 
     return () => {
       socket.off(
@@ -262,50 +416,83 @@ function handleDeviceResponse(data) {
   // DEVICE CONTROL
   // =====================================================
 
-  async function controlDevice(device) {
+  async function controlDevice(
+    device
+  ) {
+    // =========================
+    // ESP OFFLINE
+    // =========================
+
     if (!online) {
-      alert("ESP8266 đang Offline");
+      alert(
+        "ESP8266 đang Offline"
+      );
+
       return;
     }
+
+    // =========================
+    // ĐANG LOADING
+    // KHÔNG CHO CLICK LẦN 2
+    // =========================
 
     if (loading[device]) {
       return;
     }
+
+    // =========================
+    // XÁC ĐỊNH ACTION
+    // =========================
 
     const action =
       devices[device]
         ? "OFF"
         : "ON";
 
-    // hiện loading NGAY
+    // =========================
+    // HIỆN LOADING NGAY
+    // =========================
+
     setLoading((old) => ({
       ...old,
+
       [device]: true,
     }));
 
     try {
-      const response = await fetch(
-        `${API}/api/devices/${device}/control`,
-        {
-          method: "POST",
+      // =========================
+      // GỬI API
+      // =========================
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+      const response =
+        await fetch(
+          `${API}/api/devices/${device}/control`,
+          {
+            method: "POST",
 
-          body: JSON.stringify({
-            action,
-          }),
-        }
-      );
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                action,
+              }),
+          }
+        );
 
       const result =
         await response.json();
 
+      // =========================
+      // BACKEND TỪ CHỐI
+      // =========================
+
       if (!response.ok) {
         setLoading((old) => ({
           ...old,
+
           [device]: false,
         }));
 
@@ -317,19 +504,44 @@ function handleDeviceResponse(data) {
         return;
       }
 
+      // =========================
+      // BACKEND ĐÃ TẠO PENDING
+      // =========================
+
       console.log(
         "Backend PENDING:",
         result
       );
 
-      // KHÔNG set loading false ở đây.
-      // Chờ ESP device_response khoảng 2 giây.
+      // Activity History
+      // phải hiện PENDING ngay
+      setActionRefreshKey(
+        (old) => old + 1
+      );
+
+      // KHÔNG TẮT LOADING Ở ĐÂY
+      //
+      // Chờ:
+      //
+      // ESP khoảng 2 giây
+      //      ↓
+      // SUCCESS
+      //
+      // hoặc
+      //
+      // Backend timeout khoảng 5 giây
+      //      ↓
+      // FAILED
 
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Control error:",
+        error
+      );
 
       setLoading((old) => ({
         ...old,
+
         [device]: false,
       }));
 
@@ -340,11 +552,17 @@ function handleDeviceResponse(data) {
   }
 
   // =====================================================
-  // PAGE
+  // RENDER PAGE
   // =====================================================
 
   function renderPage() {
-    if (page === "dashboard") {
+    // =========================
+    // DASHBOARD
+    // =========================
+
+    if (
+      page === "dashboard"
+    ) {
       return (
         <Dashboard
           sensor={sensor}
@@ -352,36 +570,68 @@ function handleDeviceResponse(data) {
           online={online}
           devices={devices}
           loading={loading}
-          controlDevice={controlDevice}
+          controlDevice={
+            controlDevice
+          }
         />
       );
     }
 
-    if (page === "sensor") {
+    // =========================
+    // DATA SENSOR
+    // =========================
+
+    if (
+      page === "sensor"
+    ) {
       return (
         <DataSensor
-          rows={sensorRows}
+          refreshKey={
+            sensorRefreshKey
+          }
         />
       );
     }
 
-    if (page === "history") {
+    // =========================
+    // ACTIVITY HISTORY
+    // =========================
+
+    if (
+      page === "history"
+    ) {
       return (
         <ActivityHistory
-          rows={actionRows}
+          refreshKey={
+            actionRefreshKey
+          }
         />
       );
     }
 
-    if (page === "profile") {
+    // =========================
+    // PROFILE
+    // =========================
+
+    if (
+      page === "profile"
+    ) {
       return <Profile />;
     }
 
     return null;
   }
 
+  // =====================================================
+  // UI
+  // =====================================================
+
   return (
     <div className="app">
+
+      {/* =========================================
+          SIDEBAR
+      ========================================= */}
 
       <aside className="sidebar">
 
@@ -389,59 +639,83 @@ function handleDeviceResponse(data) {
           IoT Monitor
         </div>
 
+        {/* DASHBOARD */}
+
         <button
           className={
-            page === "dashboard"
+            page ===
+            "dashboard"
               ? "active"
               : ""
           }
           onClick={() =>
-            setPage("dashboard")
+            setPage(
+              "dashboard"
+            )
           }
         >
           🏠 Dashboard
         </button>
 
+        {/* DATA SENSOR */}
+
         <button
           className={
-            page === "sensor"
+            page ===
+            "sensor"
               ? "active"
               : ""
           }
           onClick={() =>
-            setPage("sensor")
+            setPage(
+              "sensor"
+            )
           }
         >
           📊 Data Sensor
         </button>
 
+        {/* ACTIVITY HISTORY */}
+
         <button
           className={
-            page === "history"
+            page ===
+            "history"
               ? "active"
               : ""
           }
           onClick={() =>
-            setPage("history")
+            setPage(
+              "history"
+            )
           }
         >
           🕘 Activity History
         </button>
 
+        {/* PROFILE */}
+
         <button
           className={
-            page === "profile"
+            page ===
+            "profile"
               ? "active"
               : ""
           }
           onClick={() =>
-            setPage("profile")
+            setPage(
+              "profile"
+            )
           }
         >
           👤 Profile
         </button>
 
       </aside>
+
+      {/* =========================================
+          MAIN CONTENT
+      ========================================= */}
 
       <main className="content">
         {renderPage()}
