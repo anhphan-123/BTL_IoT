@@ -1,3 +1,4 @@
+import avatar from "../images/Logo_PTIT_University.png";
 function Profile() {
   return (
     <div>
@@ -9,18 +10,18 @@ function Profile() {
       </div>
 
       <div className="profile-card">
-        <div className="avatar">
-          👤
+        <div className="profile-avatar">
+          <img src={avatar} alt="Avatar" />
         </div>
 
-        <h2>Tên sinh viên</h2>
+        <h2>Phan Anh</h2>
 
         <p>
           IoT Monitoring System
         </p>
 
         <div className="profile-links">
-          <a href="#">
+          <a href="https://github.com/anhphan-123/BTL_IoT">
             GitHub
           </a>
 
