@@ -24,7 +24,7 @@ router.get(
           1
         );
 
-      const limit = 50;
+      const limit = 20;
 
       const offset =
         (page - 1) * limit;

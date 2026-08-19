@@ -56,11 +56,11 @@ function Profile() {
             GitHub
           </a>
 
-          <a href="#">
+          <a href="https://www.figma.com/design/30pKkVf4buzh3VOmgiMQsE/Untitled?node-id=0-1&t=Omhpo6eZ8bwDz08R-1" target="_blank">
             Figma
           </a>
 
-          <a href="#">
+          <a href="https://www.figma.com/design/30pKkVf4buzh3VOmgiMQsE/Untitled?node-id=0-1&t=Omhpo6eZ8bwDz08R-1" target="_blank">
             Postman API
           </a>
 

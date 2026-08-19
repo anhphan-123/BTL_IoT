@@ -25,7 +25,7 @@ router.get("/", async (req, res) => {
         1
       );
 
-    const limit = 50;
+    const limit = 15;
 
     const offset =
       (page - 1) * limit;
