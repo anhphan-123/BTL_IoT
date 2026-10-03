@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const HTTP_PORT = 3000;
 
 const MQTT_URL = "mqtt://localhost:1884";

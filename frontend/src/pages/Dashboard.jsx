@@ -72,8 +72,24 @@ function Dashboard({
   ],
 };
 
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: {
+        position: "top",
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: false,
+      },
+    },
+  };
+
   return (
-    <div>
+    <div className="dashboard-page">
 
       <div className="page-header">
 
@@ -127,7 +143,7 @@ function Dashboard({
 
       <div className="dashboard-grid">
 
-        <div className="panel">
+        <div className="panel chart-panel">
 
           <h2>
             Sensor Monitor
@@ -137,6 +153,7 @@ function Dashboard({
 
             <Line
               data={chartData}
+              options={chartOptions}
             />
 
           </div>

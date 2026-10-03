@@ -1,427 +1,237 @@
-import {
-  useEffect,
-  useState
-} from "react";
+import { useEffect, useMemo, useState } from "react";
+import { API, fetchWithAuth } from "../services/auth";
 
-const API =
-  "http://localhost:3000";
+const PAGE_SIZES = [5, 10, 20, 50];
 
-function DataSensor({
-  refreshKey
-}) {
+function getPageNumbers(page, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
 
-  const [rows, setRows] =
-    useState([]);
+  const pages = new Set([1, totalPages, page, page - 1, page + 1]);
+  const ordered = [...pages]
+    .filter((value) => value > 0 && value <= totalPages)
+    .sort((a, b) => a - b);
+  const result = [];
 
-  const [page, setPage] =
-    useState(1);
+  ordered.forEach((value, index) => {
+    if (index > 0 && value - ordered[index - 1] > 1) {
+      result.push(`ellipsis-${value}`);
+    }
+    result.push(value);
+  });
 
-  const [totalPages, setTotalPages] =
-    useState(1);
+  return result;
+}
 
-  const [totalRecords, setTotalRecords] =
-    useState(0);
-
-
-  // =========================
-  // SEARCH
-  // =========================
-
-  const [searchBy, setSearchBy] =
-    useState("temperature");
-
-  const [keyword, setKeyword] =
-    useState("");
-
-  const [searchKeyword, setSearchKeyword] =
-    useState("");
-
-
-  // =========================
-  // SORT
-  // =========================
-
-  const [sortBy, setSortBy] =
-    useState("id");
-
-  const [sortOrder, setSortOrder] =
-    useState("DESC");
-
-
-  // =========================
-  // LOAD
-  // =========================
+function DataSensor({ refreshKey }) {
+  const [rows, setRows] = useState([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [sensor, setSensor] = useState("");
+  const [sortBy, setSortBy] = useState("id");
+  const [sortOrder, setSortOrder] = useState("DESC");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadData();
-  }, [
-    page,
-    sortBy,
-    sortOrder,
-    searchBy,
-    searchKeyword,
-    refreshKey
-  ]);
+    let cancelled = false;
 
+    async function loadData() {
+      setLoading(true);
 
-  async function loadData() {
-
-    try {
-
-      const params =
-        new URLSearchParams({
-          page,
-          limit: 50,
-          searchBy,
-          keyword: searchKeyword,
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: String(limit),
+          search: appliedSearch,
+          sensor,
           sortBy,
-          sortOrder
+          sortOrder,
         });
+        const response = await fetchWithAuth(`${API}/api/sensors?${params}`);
+        const data = await response.json();
 
-      const response =
-        await fetch(
-          `${API}/api/sensors?${params}`
-        );
+        if (cancelled) return;
 
-      const data =
-        await response.json();
-
-      setRows(
-        data.rows || []
-      );
-
-      setTotalPages(
-        data.totalPages || 1
-      );
-
-      setTotalRecords(
-        data.totalRecords || 0
-      );
-
+        setRows(data.rows || []);
+        setTotalPages(data.pagination?.totalPages || data.totalPages || 1);
+        setTotalRecords(data.pagination?.total ?? data.totalRecords ?? 0);
+      } catch (error) {
+        console.error("Load sensor error:", error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-    catch (error) {
 
-      console.error(
-        "Load sensor error:",
-        error
-      );
+    loadData();
+    return () => {
+      cancelled = true;
+    };
+  }, [page, limit, appliedSearch, sensor, sortBy, sortOrder, refreshKey]);
 
-    }
-  }
+  const pageNumbers = useMemo(
+    () => getPageNumbers(page, totalPages),
+    [page, totalPages]
+  );
 
-
-  function handleSearch(e) {
-
-    e.preventDefault();
-
+  function submitSearch(event) {
+    event.preventDefault();
     setPage(1);
-
-    setSearchKeyword(
-      keyword.trim()
-    );
+    setAppliedSearch(search.trim());
   }
-
 
   function resetSearch() {
-
-    setKeyword("");
-
-    setSearchKeyword("");
-
+    setSearch("");
+    setAppliedSearch("");
+    setSensor("");
     setPage(1);
   }
-
 
   function changeSort(column) {
-
-    if (sortBy === column) {
-
-      setSortOrder(
-        sortOrder === "ASC"
-          ? "DESC"
-          : "ASC"
-      );
-
-    }
-    else {
-
-      setSortBy(column);
-
-      setSortOrder("ASC");
-
-    }
-
     setPage(1);
+    if (sortBy === column) {
+      setSortOrder((current) => (current === "ASC" ? "DESC" : "ASC"));
+    } else {
+      setSortBy(column);
+      setSortOrder("ASC");
+    }
   }
-
 
   function sortIcon(column) {
-
-    if (sortBy !== column) {
-      return "";
-    }
-
-    return sortOrder === "ASC"
-      ? " ▲"
-      : " ▼";
+    return sortBy === column ? (sortOrder === "ASC" ? " ▲" : " ▼") : "";
   }
 
+  const firstRecord = totalRecords === 0 ? 0 : (page - 1) * limit + 1;
+  const lastRecord = Math.min(page * limit, totalRecords);
 
   return (
     <div>
-
       <div className="page-header">
-
         <div>
           <h1>Data Sensor</h1>
-
-          <p>
-            Tổng số bản ghi:
-            {" "}
-            {totalRecords}
-          </p>
+          <p>Theo dõi dữ liệu cảm biến từ SQLite</p>
         </div>
-
       </div>
-
-
-      {/* =====================
-          SEARCH
-      ===================== */}
 
       <div className="panel search-panel">
-
-        <form
-          className="search-form"
-          onSubmit={handleSearch}
-        >
+        <form className="search-form" onSubmit={submitSearch}>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Tìm thời gian: 03/10/2026 09:20"
+            aria-label="Tìm theo thời gian"
+          />
 
           <select
-            value={searchBy}
-            onChange={(e) => {
-              setSearchBy(
-                e.target.value
-              );
-
-              setKeyword("");
+            value={sensor}
+            onChange={(event) => {
+              setSensor(event.target.value);
+              setPage(1);
             }}
+            aria-label="Lọc loại cảm biến"
           >
-
-            <option value="temperature">
-              Nhiệt độ
-            </option>
-
-            <option value="humidity">
-              Độ ẩm
-            </option>
-
-            <option value="light">
-              Ánh sáng
-            </option>
-
-            <option value="time">
-              Thời gian
-            </option>
-
-            <option value="id">
-              ID
-            </option>
-
+            <option value="">Sensor: All</option>
+            <option value="temperature">Temperature</option>
+            <option value="humidity">Humidity</option>
+            <option value="light">Light</option>
           </select>
 
+          <label className="page-size-control">
+            Show
+            <select
+              value={limit}
+              onChange={(event) => {
+                setLimit(Number(event.target.value));
+                setPage(1);
+              }}
+              aria-label="Số dòng mỗi trang"
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          {searchBy === "time" ? (
-
-            <input
-              type="text"
-              value={keyword}
-              onChange={(e) =>
-                setKeyword(
-                  e.target.value
-                )
-              }
-              placeholder="VD: 15:03:16 hoặc 2026-08-19 15:03:16"
-            />
-
-          ) : (
-
-            <input
-              type="text"
-              value={keyword}
-              onChange={(e) =>
-                setKeyword(
-                  e.target.value
-                )
-              }
-              placeholder="Nhập giá trị cần tìm..."
-            />
-
-          )}
-
-
-          <button type="submit">
-            Tìm kiếm
-          </button>
-
-          <button
-            type="button"
-            onClick={resetSearch}
-          >
+          <button type="submit">Search</button>
+          <button type="button" className="secondary-button" onClick={resetSearch}>
             Reset
           </button>
-
         </form>
-
       </div>
 
-
-      {/* =====================
-          TABLE
-      ===================== */}
-
-      <div className="panel">
-
-        <table>
-
-          <thead>
-
-            <tr>
-
-              <th
-                onClick={() =>
-                  changeSort("id")
-                }
-              >
-                ID
-                {sortIcon("id")}
-              </th>
-
-              <th
-                onClick={() =>
-                  changeSort(
-                    "temperature"
-                  )
-                }
-              >
-                Nhiệt độ
-                {sortIcon(
-                  "temperature"
-                )}
-              </th>
-
-              <th
-                onClick={() =>
-                  changeSort(
-                    "humidity"
-                  )
-                }
-              >
-                Độ ẩm
-                {sortIcon(
-                  "humidity"
-                )}
-              </th>
-
-              <th
-                onClick={() =>
-                  changeSort("light")
-                }
-              >
-                Ánh sáng
-                {sortIcon("light")}
-              </th>
-
-              <th
-                onClick={() =>
-                  changeSort("time")
-                }
-              >
-                Thời gian
-                {sortIcon("time")}
-              </th>
-
-            </tr>
-
-          </thead>
-
-
-          <tbody>
-
-            {rows.map(
-              (row) => (
-
-                <tr key={row.id}>
-
-                  <td>
-                    {row.id}
-                  </td>
-
-                  <td>
-                    {row.temperature} °C
-                  </td>
-
-                  <td>
-                    {row.humidity} %
-                  </td>
-
-                  <td>
-                    {row.light} lux
-                  </td>
-
-                  <td>
-                    {row.time}
-                  </td>
-
-                </tr>
-
-              )
-            )}
-
-          </tbody>
-
-        </table>
-
-
-        {/* PAGINATION */}
-
-        <div className="pagination">
-
-          <button
-            disabled={page <= 1}
-            onClick={() =>
-              setPage(
-                page - 1
-              )
-            }
-          >
-            ← Previous
-          </button>
-
-
-          <span>
-            Page {page}
-            {" / "}
-            {totalPages}
-          </span>
-
-
-          <button
-            disabled={
-              page >= totalPages
-            }
-            onClick={() =>
-              setPage(
-                page + 1
-              )
-            }
-          >
-            Next →
-          </button>
-
+      <div className="panel table-panel">
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th onClick={() => changeSort("id")}>STT{sortIcon("id")}</th>
+                <th onClick={() => changeSort("temperature")}>
+                  Temperature{sortIcon("temperature")}
+                </th>
+                <th onClick={() => changeSort("humidity")}>
+                  Humidity{sortIcon("humidity")}
+                </th>
+                <th onClick={() => changeSort("light")}>Light{sortIcon("light")}</th>
+                <th onClick={() => changeSort("time")}>Time{sortIcon("time")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && rows.length === 0 ? (
+                <tr><td colSpan="5" className="empty-state">Đang tải dữ liệu...</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan="5" className="empty-state">Không có dữ liệu phù hợp.</td></tr>
+              ) : (
+                rows.map((row, index) => (
+                  <tr key={row.id}>
+                    <td>{(page - 1) * limit + index + 1}</td>
+                    <td>{row.temperature} °C</td>
+                    <td>{row.humidity} %</td>
+                    <td>{row.light} lux</td>
+                    <td>{row.time}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
 
+        <div className="table-footer">
+          <span className="record-summary">
+            Showing {firstRecord}-{lastRecord} of {totalRecords} records
+          </span>
+          <div className="pagination" aria-label="Sensor pagination">
+            <button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
+              Previous
+            </button>
+            {pageNumbers.map((value) =>
+              typeof value === "string" ? (
+                <span className="pagination-ellipsis" key={value}>…</span>
+              ) : (
+                <button
+                  className={value === page ? "current" : ""}
+                  key={value}
+                  onClick={() => setPage(value)}
+                >
+                  {value}
+                </button>
+              )
+            )}
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage((value) => value + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
-
     </div>
   );
 }

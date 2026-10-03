@@ -107,15 +107,17 @@ const allowedDevices = [
               request_id,
               device,
               action,
-              status
+              status,
+              "user"
             )
 
-            VALUES (?, ?, ?, 'FAILED')
+            VALUES (?, ?, ?, 'FAILED', ?)
             `,
             [
               requestId,
               device,
-              action
+              action,
+              req.user.username
             ]
           );
 
@@ -146,15 +148,17 @@ const allowedDevices = [
           request_id,
           device,
           action,
-          status
+          status,
+          "user"
         )
 
-        VALUES (?, ?, ?, 'PENDING')
+        VALUES (?, ?, ?, 'PENDING', ?)
         `,
         [
           requestId,
           device,
-          action
+          action,
+          req.user.username
         ]
       );
 

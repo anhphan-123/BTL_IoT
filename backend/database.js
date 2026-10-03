@@ -1,4 +1,5 @@
 const sqlite3 = require("sqlite3").verbose();
+const bcrypt = require("bcryptjs");
 
 const db = new sqlite3.Database(
   "./iot.db",
@@ -46,6 +47,38 @@ function all(sql, params = []) {
 
 async function initDatabase() {
   await run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const defaultUsername = String(process.env.DEFAULT_USERNAME || "").trim();
+  const defaultPassword = String(process.env.DEFAULT_PASSWORD || "");
+
+  if (defaultUsername && defaultPassword) {
+    const existingUser = await get(
+      `SELECT id FROM users WHERE username = ?`,
+      [defaultUsername]
+    );
+
+    if (!existingUser) {
+      const passwordHash = await bcrypt.hash(defaultPassword, 12);
+      await run(
+        `INSERT INTO users (username, password_hash) VALUES (?, ?)`,
+        [defaultUsername, passwordHash]
+      );
+      console.log(`Default user created: ${defaultUsername}`);
+    }
+  } else {
+    console.warn(
+      "DEFAULT_USERNAME and DEFAULT_PASSWORD are not configured; no default user was created"
+    );
+  }
+
+  await run(`
     CREATE TABLE IF NOT EXISTS sensor_data (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -76,6 +109,20 @@ async function initDatabase() {
         DEFAULT (datetime('now', 'localtime'))
     )
   `);
+
+  // Add the actor column without recreating the table or losing history.
+  // PRAGMA is checked first so restarting the backend is safe.
+  const actionColumns = await all(`PRAGMA table_info(action_history)`);
+  const hasUserColumn = actionColumns.some(
+    (column) => column.name === "user"
+  );
+
+  if (!hasUserColumn) {
+    await run(`
+      ALTER TABLE action_history
+      ADD COLUMN "user" TEXT NOT NULL DEFAULT 'admin'
+    `);
+  }
   await run(`
   CREATE TABLE IF NOT EXISTS device_states (
     device TEXT PRIMARY KEY,

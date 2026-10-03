@@ -7,10 +7,20 @@ import Dashboard from "./pages/Dashboard";
 import DataSensor from "./pages/DataSensor";
 import ActivityHistory from "./pages/ActivityHistory";
 import Profile from "./pages/Profile";
-
-const API = "http://localhost:3000";
+import Login from "./pages/Login";
+import {
+  API,
+  clearAuth,
+  fetchWithAuth,
+  getStoredUser,
+  getToken,
+  saveAuth,
+} from "./services/auth";
 
 function App() {
+  const [authStatus, setAuthStatus] = useState("checking");
+  const [currentUser, setCurrentUser] = useState(getStoredUser);
+
   // =====================================================
   // PAGE
   // =====================================================
@@ -78,12 +88,84 @@ function App() {
   ] = useState(0);
 
   // =====================================================
+  // AUTHENTICATION
+  // =====================================================
+
+  useEffect(() => {
+    const token = getToken();
+
+    if (!token) {
+      setAuthStatus("unauthenticated");
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    fetchWithAuth(`${API}/api/auth/me`)
+      .then(async (response) => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Phiên đăng nhập không hợp lệ");
+        }
+
+        if (!cancelled) {
+          setCurrentUser(data.user);
+          localStorage.setItem("user", JSON.stringify(data.user));
+          setAuthStatus("authenticated");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          clearAuth();
+          setCurrentUser(null);
+          setAuthStatus("unauthenticated");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // LOAD DỮ LIỆU BAN ĐẦU
   // =====================================================
 
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    if (authStatus === "authenticated") {
+      loadInitialData();
+    }
+  }, [authStatus]);
+
+  async function handleLogin(credentials) {
+    const response = await fetch(`${API}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(credentials),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Đăng nhập thất bại");
+    }
+
+    saveAuth(data.token, data.user);
+    setCurrentUser(data.user);
+    setPage("dashboard");
+    setAuthStatus("authenticated");
+    window.history.replaceState({}, "", "/");
+  }
+
+  function handleLogout() {
+    clearAuth();
+    setCurrentUser(null);
+    setAuthStatus("unauthenticated");
+    setPage("dashboard");
+    socket.disconnect();
+    window.history.replaceState({}, "", "/login");
+  }
 
   async function loadInitialData() {
     try {
@@ -92,7 +174,7 @@ function App() {
       // =========================
 
       const latestResponse =
-        await fetch(
+        await fetchWithAuth(
           `${API}/api/sensors/latest`
         );
 
@@ -108,7 +190,7 @@ function App() {
       // =========================
 
       const sensorResponse =
-        await fetch(
+        await fetchWithAuth(
           `${API}/api/sensors?page=1&limit=50`
         );
 
@@ -124,7 +206,7 @@ function App() {
       // =========================
 
       const statusResponse =
-        await fetch(
+        await fetchWithAuth(
           `${API}/api/system/status`
         );
 
@@ -140,7 +222,7 @@ function App() {
       // =========================
 
       const deviceResponse =
-        await fetch(
+        await fetchWithAuth(
           `${API}/api/devices/states`
         );
 
@@ -171,6 +253,15 @@ function App() {
   // =====================================================
 
   useEffect(() => {
+    if (authStatus !== "authenticated") {
+      return undefined;
+    }
+
+    socket.auth = {
+      token: getToken(),
+    };
+    socket.connect();
+
     // =========================
     // SOCKET CONNECT
     // =========================
@@ -409,8 +500,9 @@ function App() {
         "device:response",
         handleDeviceResponse
       );
+      socket.disconnect();
     };
-  }, []);
+  }, [authStatus]);
 
   // =====================================================
   // DEVICE CONTROL
@@ -465,7 +557,7 @@ function App() {
       // =========================
 
       const response =
-        await fetch(
+        await fetchWithAuth(
           `${API}/api/devices/${device}/control`,
           {
             method: "POST",
@@ -626,6 +718,14 @@ function App() {
   // UI
   // =====================================================
 
+  if (authStatus === "checking") {
+    return <main className="auth-loading">Đang kiểm tra phiên đăng nhập...</main>;
+  }
+
+  if (authStatus !== "authenticated") {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="app">
 
@@ -637,6 +737,10 @@ function App() {
 
         <div className="logo">
           IoT Monitor
+        </div>
+
+        <div className="sidebar-user">
+          Logged in as <strong>{currentUser?.username}</strong>
         </div>
 
         {/* DASHBOARD */}
@@ -709,6 +813,10 @@ function App() {
           }
         >
           👤 Profile
+        </button>
+
+        <button className="logout-button" onClick={handleLogout}>
+          🚪 Logout
         </button>
 
       </aside>

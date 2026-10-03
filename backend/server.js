@@ -1,6 +1,7 @@
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
 
 const {
   Server
@@ -9,6 +10,8 @@ const {
 const {
   HTTP_PORT
 } = require("./config");
+
+const { requireAuth } = require("./middleware/auth");
 
 const {
   initDatabase,
@@ -38,6 +41,9 @@ const actionRoutes =
 const deviceRoutes =
   require("./routes/devices");
 
+const authRoutes =
+  require("./routes/auth");
+
 
 // =======================================
 // EXPRESS
@@ -54,6 +60,32 @@ const io = new Server(server, {
   }
 });
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  const secret = String(process.env.JWT_SECRET || "").trim();
+
+  if (!token || !secret) {
+    return next(new Error("Authentication required"));
+  }
+
+  try {
+    const payload = jwt.verify(token, secret);
+
+    if (!payload.id || !payload.username) {
+      return next(new Error("Invalid authentication token"));
+    }
+
+    socket.user = {
+      id: payload.id,
+      username: payload.username,
+    };
+
+    return next();
+  } catch (_error) {
+    return next(new Error("Invalid or expired token"));
+  }
+});
+
 
 app.set("io", io);
 
@@ -67,17 +99,25 @@ app.use(express.json());
 // =======================================
 
 app.use(
+  "/api/auth",
+  authRoutes
+);
+
+app.use(
   "/api/sensors",
+  requireAuth,
   sensorRoutes
 );
 
 app.use(
   "/api/actions",
+  requireAuth,
   actionRoutes
 );
 
 app.use(
   "/api/devices",
+  requireAuth,
   deviceRoutes
 );
 
@@ -88,6 +128,7 @@ app.use(
 
 app.get(
   "/api/system/status",
+  requireAuth,
   (req, res) => {
 
     res.json(
