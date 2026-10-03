@@ -29,7 +29,8 @@ function startMQTT(io) {
       clientId:
         "backend-" +
         Math.random().toString(16).slice(2),
-
+      username: "b23dcat018",
+      password: "123",
       reconnectPeriod: 2000
     }
   );
