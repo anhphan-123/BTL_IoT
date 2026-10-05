@@ -1,39 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { API, fetchWithAuth } from "../services/auth";
-
-const PAGE_SIZES = [5, 10, 20, 50];
-
-function getPageNumbers(page, totalPages) {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const pages = new Set([1, totalPages, page, page - 1, page + 1]);
-  const ordered = [...pages]
-    .filter((value) => value > 0 && value <= totalPages)
-    .sort((a, b) => a - b);
-  const result = [];
-
-  ordered.forEach((value, index) => {
-    if (index > 0 && value - ordered[index - 1] > 1) {
-      result.push(`ellipsis-${value}`);
-    }
-    result.push(value);
-  });
-
-  return result;
-}
+import {
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+  MIN_PAGE_SIZE,
+  PAGE_SIZE_OPTIONS,
+  formatTableTime,
+  getPageNumbers,
+  normalizePageSize,
+} from "../utils/table";
 
 function DataSensor({ refreshKey }) {
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSizeSelection, setPageSizeSelection] = useState(
+    String(DEFAULT_PAGE_SIZE)
+  );
+  const [customLimit, setCustomLimit] = useState("");
+  const [customLimitError, setCustomLimitError] = useState("");
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [search, setSearch] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [sensor, setSensor] = useState("");
-  const [sortBy, setSortBy] = useState("id");
+  const [timeSearch, setTimeSearch] = useState("");
+  const [sensorType, setSensorType] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState({
+    search: "",
+    timeSearch: "",
+    sensorType: "",
+  });
+  const [sortBy, setSortBy] = useState("time");
   const [sortOrder, setSortOrder] = useState("DESC");
   const [loading, setLoading] = useState(false);
 
@@ -47,8 +43,9 @@ function DataSensor({ refreshKey }) {
         const params = new URLSearchParams({
           page: String(page),
           limit: String(limit),
-          search: appliedSearch,
-          sensor,
+          search: appliedFilters.search,
+          time: appliedFilters.timeSearch,
+          sensor_type: appliedFilters.sensorType,
           sortBy,
           sortOrder,
         });
@@ -57,7 +54,7 @@ function DataSensor({ refreshKey }) {
 
         if (cancelled) return;
 
-        setRows(data.rows || []);
+        setRows(data.rows || data.data || []);
         setTotalPages(data.pagination?.totalPages || data.totalPages || 1);
         setTotalRecords(data.pagination?.total ?? data.totalRecords ?? 0);
       } catch (error) {
@@ -71,7 +68,7 @@ function DataSensor({ refreshKey }) {
     return () => {
       cancelled = true;
     };
-  }, [page, limit, appliedSearch, sensor, sortBy, sortOrder, refreshKey]);
+  }, [page, limit, appliedFilters, sortBy, sortOrder, refreshKey]);
 
   const pageNumbers = useMemo(
     () => getPageNumbers(page, totalPages),
@@ -80,14 +77,58 @@ function DataSensor({ refreshKey }) {
 
   function submitSearch(event) {
     event.preventDefault();
-    setPage(1);
-    setAppliedSearch(search.trim());
+    applySearch();
   }
 
-  function resetSearch() {
+  function applySearch() {
+    let nextLimit = limit;
+
+    if (pageSizeSelection === "custom") {
+      nextLimit = normalizePageSize(customLimit, null);
+      if (nextLimit === null) {
+        setCustomLimitError("Enter a number from 1 to 100.");
+        return;
+      }
+
+      setLimit(nextLimit);
+      setCustomLimitError("");
+    }
+
+    setPage(1);
+    setAppliedFilters({
+      search: search.trim(),
+      timeSearch: timeSearch.trim(),
+      sensorType,
+    });
+  }
+
+  function changePageSize(event) {
+    const value = event.target.value;
+    setPageSizeSelection(value);
+    setCustomLimitError("");
+
+    if (value === "custom") {
+      setCustomLimit(String(limit));
+      return;
+    }
+
+    setCustomLimit("");
+    const nextLimit = normalizePageSize(value, null);
+    if (nextLimit !== null) {
+      setLimit(nextLimit);
+      setPage(1);
+    }
+  }
+
+  function resetFilters() {
     setSearch("");
-    setAppliedSearch("");
-    setSensor("");
+    setTimeSearch("");
+    setSensorType("");
+    setLimit(DEFAULT_PAGE_SIZE);
+    setPageSizeSelection(String(DEFAULT_PAGE_SIZE));
+    setCustomLimit("");
+    setCustomLimitError("");
+    setAppliedFilters({ search: "", timeSearch: "", sensorType: "" });
     setPage(1);
   }
 
@@ -109,11 +150,11 @@ function DataSensor({ refreshKey }) {
   const lastRecord = Math.min(page * limit, totalRecords);
 
   return (
-    <div>
+    <div className="data-sensor-page">
       <div className="page-header">
         <div>
           <h1>Data Sensor</h1>
-          <p>Theo dõi dữ liệu cảm biến từ SQLite</p>
+          <p>Sensor records from database</p>
         </div>
       </div>
 
@@ -123,44 +164,67 @@ function DataSensor({ refreshKey }) {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm thời gian: 03/10/2026 09:20"
-            aria-label="Tìm theo thời gian"
+            placeholder="Tìm theo ID, mã cảm biến hoặc giá trị..."
+            aria-label="Tìm theo ID, mã cảm biến hoặc giá trị"
           />
 
           <select
-            value={sensor}
-            onChange={(event) => {
-              setSensor(event.target.value);
-              setPage(1);
-            }}
-            aria-label="Lọc loại cảm biến"
+            value={sensorType}
+            onChange={(event) => setSensorType(event.target.value)}
+            aria-label="Filter sensor type"
           >
-            <option value="">Sensor: All</option>
+            <option value="">All Sensors</option>
             <option value="temperature">Temperature</option>
             <option value="humidity">Humidity</option>
             <option value="light">Light</option>
           </select>
 
+          <input
+            className="time-filter"
+            type="text"
+            value={timeSearch}
+            onChange={(event) => setTimeSearch(event.target.value)}
+            placeholder="Tìm theo thời gian, VD: 05/10/2026 21:23:00"
+            aria-label="Tìm theo thời gian"
+          />
+
           <label className="page-size-control">
             Show
             <select
-              value={limit}
-              onChange={(event) => {
-                setLimit(Number(event.target.value));
-                setPage(1);
-              }}
-              aria-label="Số dòng mỗi trang"
+              value={pageSizeSelection}
+              onChange={changePageSize}
+              aria-label="Rows per page"
             >
-              {PAGE_SIZES.map((size) => (
+              {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
                   {size}
                 </option>
               ))}
+              <option value="custom">Custom...</option>
             </select>
+            {pageSizeSelection === "custom" && (
+              <input
+                className="custom-page-size"
+                type="number"
+                min={MIN_PAGE_SIZE}
+                max={MAX_PAGE_SIZE}
+                step="1"
+                value={customLimit}
+                onChange={(event) => {
+                  setCustomLimit(event.target.value);
+                  setCustomLimitError("");
+                }}
+                aria-label="Custom rows per page"
+              />
+            )}
+            rows
           </label>
+          {customLimitError && (
+            <span className="page-size-error">{customLimitError}</span>
+          )}
 
           <button type="submit">Search</button>
-          <button type="button" className="secondary-button" onClick={resetSearch}>
+          <button type="button" className="secondary-button" onClick={resetFilters}>
             Reset
           </button>
         </form>
@@ -168,33 +232,31 @@ function DataSensor({ refreshKey }) {
 
       <div className="panel table-panel">
         <div className="table-scroll">
-          <table>
+          <table className="sensor-data-table">
             <thead>
               <tr>
-                <th onClick={() => changeSort("id")}>STT{sortIcon("id")}</th>
-                <th onClick={() => changeSort("temperature")}>
-                  Temperature{sortIcon("temperature")}
-                </th>
-                <th onClick={() => changeSort("humidity")}>
-                  Humidity{sortIcon("humidity")}
-                </th>
-                <th onClick={() => changeSort("light")}>Light{sortIcon("light")}</th>
-                <th onClick={() => changeSort("time")}>Time{sortIcon("time")}</th>
+                <th onClick={() => changeSort("id")}>ID{sortIcon("id")}</th>
+                <th onClick={() => changeSort("sensor_code")}>SENSOR CODE{sortIcon("sensor_code")}</th>
+                <th onClick={() => changeSort("sensor_name")}>SENSOR NAME{sortIcon("sensor_name")}</th>
+                <th onClick={() => changeSort("value")}>VALUE{sortIcon("value")}</th>
+                <th>UNIT</th>
+                <th onClick={() => changeSort("time")}>RECORDED TIME{sortIcon("time")}</th>
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
-                <tr><td colSpan="5" className="empty-state">Đang tải dữ liệu...</td></tr>
+                <tr><td colSpan="6" className="empty-state">Loading data...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan="5" className="empty-state">Không có dữ liệu phù hợp.</td></tr>
+                <tr><td colSpan="6" className="empty-state">No matching records.</td></tr>
               ) : (
-                rows.map((row, index) => (
+                rows.map((row) => (
                   <tr key={row.id}>
-                    <td>{(page - 1) * limit + index + 1}</td>
-                    <td>{row.temperature} °C</td>
-                    <td>{row.humidity} %</td>
-                    <td>{row.light} lux</td>
-                    <td>{row.time}</td>
+                    <td className="sensor-id">{row.id}</td>
+                    <td>{row.sensor_code}</td>
+                    <td>{row.sensor_name || "-"}</td>
+                    <td className="sensor-value">{row.value}</td>
+                    <td>{row.unit || "-"}</td>
+                    <td>{formatTableTime(row.time)}</td>
                   </tr>
                 ))
               )}
@@ -204,7 +266,7 @@ function DataSensor({ refreshKey }) {
 
         <div className="table-footer">
           <span className="record-summary">
-            Showing {firstRecord}-{lastRecord} of {totalRecords} records
+            Showing {firstRecord} - {lastRecord} of {totalRecords} records
           </span>
           <div className="pagination" aria-label="Sensor pagination">
             <button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
@@ -223,10 +285,7 @@ function DataSensor({ refreshKey }) {
                 </button>
               )
             )}
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((value) => value + 1)}
-            >
+            <button disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>
               Next
             </button>
           </div>

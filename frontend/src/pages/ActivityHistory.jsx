@@ -1,43 +1,64 @@
 import { useEffect, useMemo, useState } from "react";
 import { API, fetchWithAuth } from "../services/auth";
-
-const PAGE_SIZES = [5, 10, 20, 50];
-
-function getPageNumbers(page, totalPages) {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const pages = new Set([1, totalPages, page, page - 1, page + 1]);
-  const ordered = [...pages]
-    .filter((value) => value > 0 && value <= totalPages)
-    .sort((a, b) => a - b);
-  const result = [];
-
-  ordered.forEach((value, index) => {
-    if (index > 0 && value - ordered[index - 1] > 1) {
-      result.push(`ellipsis-${value}`);
-    }
-    result.push(value);
-  });
-
-  return result;
-}
+import {
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+  MIN_PAGE_SIZE,
+  PAGE_SIZE_OPTIONS,
+  formatTableTime,
+  getPageNumbers,
+  normalizePageSize,
+} from "../utils/table";
 
 function ActivityHistory({ refreshKey }) {
+  const [devices, setDevices] = useState([]);
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSizeSelection, setPageSizeSelection] = useState(
+    String(DEFAULT_PAGE_SIZE)
+  );
+  const [customLimit, setCustomLimit] = useState("");
+  const [customLimitError, setCustomLimitError] = useState("");
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [search, setSearch] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
+  const [timeSearch, setTimeSearch] = useState("");
   const [device, setDevice] = useState("");
   const [action, setAction] = useState("");
   const [status, setStatus] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState({
+    search: "",
+    timeSearch: "",
+    device: "",
+    action: "",
+    status: "",
+  });
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState("DESC");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDevices() {
+      try {
+        const response = await fetchWithAuth(`${API}/api/devices`);
+        const data = await response.json();
+
+        if (!cancelled && response.ok) {
+          setDevices(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Load devices error:", error);
+      }
+    }
+
+    loadDevices();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,10 +70,11 @@ function ActivityHistory({ refreshKey }) {
         const params = new URLSearchParams({
           page: String(page),
           limit: String(limit),
-          search: appliedSearch,
-          device,
-          action,
-          status,
+          search: appliedFilters.search,
+          time: appliedFilters.timeSearch,
+          device: appliedFilters.device,
+          action: appliedFilters.action,
+          status: appliedFilters.status,
           sortBy,
           sortOrder,
         });
@@ -75,7 +97,7 @@ function ActivityHistory({ refreshKey }) {
     return () => {
       cancelled = true;
     };
-  }, [page, limit, appliedSearch, device, action, status, sortBy, sortOrder, refreshKey]);
+  }, [page, limit, appliedFilters, sortBy, sortOrder, refreshKey]);
 
   const pageNumbers = useMemo(
     () => getPageNumbers(page, totalPages),
@@ -84,16 +106,68 @@ function ActivityHistory({ refreshKey }) {
 
   function submitSearch(event) {
     event.preventDefault();
+    applySearch();
+  }
+
+  function applySearch() {
+    let nextLimit = limit;
+
+    if (pageSizeSelection === "custom") {
+      nextLimit = normalizePageSize(customLimit, null);
+      if (nextLimit === null) {
+        setCustomLimitError("Enter a number from 1 to 100.");
+        return;
+      }
+
+      setLimit(nextLimit);
+      setCustomLimitError("");
+    }
+
     setPage(1);
-    setAppliedSearch(search.trim());
+    setAppliedFilters({
+      search: search.trim(),
+      timeSearch: timeSearch.trim(),
+      device,
+      action,
+      status,
+    });
+  }
+
+  function changePageSize(event) {
+    const value = event.target.value;
+    setPageSizeSelection(value);
+    setCustomLimitError("");
+
+    if (value === "custom") {
+      setCustomLimit(String(limit));
+      return;
+    }
+
+    setCustomLimit("");
+    const nextLimit = normalizePageSize(value, null);
+    if (nextLimit !== null) {
+      setLimit(nextLimit);
+      setPage(1);
+    }
   }
 
   function resetFilters() {
     setSearch("");
-    setAppliedSearch("");
+    setTimeSearch("");
     setDevice("");
     setAction("");
     setStatus("");
+    setLimit(DEFAULT_PAGE_SIZE);
+    setPageSizeSelection(String(DEFAULT_PAGE_SIZE));
+    setCustomLimit("");
+    setCustomLimitError("");
+    setAppliedFilters({
+      search: "",
+      timeSearch: "",
+      device: "",
+      action: "",
+      status: "",
+    });
     setPage(1);
   }
 
@@ -119,7 +193,7 @@ function ActivityHistory({ refreshKey }) {
       <div className="page-header">
         <div>
           <h1>Activity History</h1>
-          <p>Lịch sử điều khiển Light và Fan</p>
+          <p>Device control history</p>
         </div>
       </div>
 
@@ -129,39 +203,72 @@ function ActivityHistory({ refreshKey }) {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm thời gian: 03/10/2026 09:20"
-            aria-label="Tìm lịch sử theo thời gian"
+            placeholder="Tìm theo ID, tên thiết bị hoặc người dùng..."
+            aria-label="Tìm theo ID, tên thiết bị hoặc người dùng"
           />
 
-          <select value={device} onChange={(event) => { setDevice(event.target.value); setPage(1); }}>
+          <select value={device} onChange={(event) => setDevice(event.target.value)}>
             <option value="">All Devices</option>
-            <option value="light">Light</option>
-            <option value="fan">Fan</option>
+            {devices.map((item) => (
+              <option key={item.id} value={item.device_code}>
+                {item.device_name} ({item.device_code})
+              </option>
+            ))}
           </select>
 
-          <select value={action} onChange={(event) => { setAction(event.target.value); setPage(1); }}>
+          <select value={action} onChange={(event) => setAction(event.target.value)}>
             <option value="">All Actions</option>
             <option value="ON">ON</option>
             <option value="OFF">OFF</option>
           </select>
 
-          <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}>
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="">All Status</option>
             <option value="SUCCESS">SUCCESS</option>
             <option value="FAILED">FAILED</option>
             <option value="PENDING">PENDING</option>
           </select>
 
+          <input
+            className="time-filter"
+            type="text"
+            value={timeSearch}
+            onChange={(event) => setTimeSearch(event.target.value)}
+            placeholder="Tìm theo thời gian, VD: 05/10/2026 21:20:24"
+            aria-label="Tìm theo thời gian"
+          />
+
           <label className="page-size-control">
             Show
             <select
-              value={limit}
-              onChange={(event) => { setLimit(Number(event.target.value)); setPage(1); }}
-              aria-label="Số dòng mỗi trang"
+              value={pageSizeSelection}
+              onChange={changePageSize}
+              aria-label="Rows per page"
             >
-              {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+              <option value="custom">Custom...</option>
             </select>
+            {pageSizeSelection === "custom" && (
+              <input
+                className="custom-page-size"
+                type="number"
+                min={MIN_PAGE_SIZE}
+                max={MAX_PAGE_SIZE}
+                step="1"
+                value={customLimit}
+                onChange={(event) => {
+                  setCustomLimit(event.target.value);
+                  setCustomLimitError("");
+                }}
+                aria-label="Custom rows per page"
+              />
+            )}
           </label>
+          {customLimitError && (
+            <span className="page-size-error">{customLimitError}</span>
+          )}
 
           <button type="submit">Search</button>
           <button type="button" className="secondary-button" onClick={resetFilters}>Reset</button>
@@ -173,8 +280,9 @@ function ActivityHistory({ refreshKey }) {
           <table>
             <thead>
               <tr>
-                <th onClick={() => changeSort("id")}>STT{sortIcon("id")}</th>
-                <th onClick={() => changeSort("device")}>Device{sortIcon("device")}</th>
+                <th onClick={() => changeSort("id")}>ID{sortIcon("id")}</th>
+                <th onClick={() => changeSort("device_code")}>DEVICE CODE{sortIcon("device_code")}</th>
+                <th onClick={() => changeSort("device_name")}>DEVICE NAME{sortIcon("device_name")}</th>
                 <th onClick={() => changeSort("action")}>Action{sortIcon("action")}</th>
                 <th onClick={() => changeSort("status")}>Status{sortIcon("status")}</th>
                 <th onClick={() => changeSort("user")}>User{sortIcon("user")}</th>
@@ -183,18 +291,19 @@ function ActivityHistory({ refreshKey }) {
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
-                <tr><td colSpan="6" className="empty-state">Đang tải dữ liệu...</td></tr>
+                <tr><td colSpan="7" className="empty-state">Loading data...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan="6" className="empty-state">Không có lịch sử phù hợp.</td></tr>
+                <tr><td colSpan="7" className="empty-state">No matching records.</td></tr>
               ) : (
-                rows.map((row, index) => (
+                rows.map((row) => (
                   <tr key={row.id}>
-                    <td>{(page - 1) * limit + index + 1}</td>
-                    <td>{row.device === "light" ? "Light" : "Fan"}</td>
+                    <td>{row.id}</td>
+                    <td>{row.device_code || "-"}</td>
+                    <td>{row.device_name || "-"}</td>
                     <td>{row.action}</td>
                     <td><span className={`history-status ${row.status}`}>{row.status}</span></td>
                     <td>{row.user || "-"}</td>
-                    <td>{row.time}</td>
+                    <td>{formatTableTime(row.time)}</td>
                   </tr>
                 ))
               )}

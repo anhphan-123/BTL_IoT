@@ -10,7 +10,8 @@ const {
 const {
   run,
   get,
-  saveDeviceState
+  saveDeviceState,
+  saveSensorReadings
 } = require("./database");
 const restoreRequests = new Set();
 const {
@@ -184,6 +185,8 @@ async function handleSensor(
         `,
         [result.id]
       );
+
+    await saveSensorReadings(row);
 
 
     // ESP đang online

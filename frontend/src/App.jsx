@@ -191,7 +191,7 @@ function App() {
 
       const sensorResponse =
         await fetchWithAuth(
-          `${API}/api/sensors?page=1&limit=50`
+          `${API}/api/sensors/summary?page=1&limit=50`
         );
 
       const sensorData =

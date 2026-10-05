@@ -5,7 +5,8 @@ const router = express.Router();
 
 const {
   run,
-  get
+  get,
+  all
 } = require("../database");
 
 const {
@@ -27,6 +28,26 @@ const {
 // =======================================
 // DEVICE STATES
 // =======================================
+
+router.get(
+  "/",
+  async (req, res) => {
+    try {
+      const devices = await all(
+        `
+        SELECT id, device_code, device_name, device_type, created_at
+        FROM devices
+        ORDER BY id
+        `
+      );
+
+      res.json(devices);
+    } catch (err) {
+      console.error("Devices API error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 router.get(
   "/states",
@@ -55,22 +76,37 @@ router.post(
           req.body.action || ""
         ).toUpperCase();
 
+      const allowedDevices = new Set([
+        "light",
+        "fan"
+      ]);
 
-const allowedDevices = [
-  "light",
-  "fan"
-];
-
-
-      if (
-        !allowedDevices.includes(device)
-      ) {
-
+      if (!allowedDevices.has(device)) {
         return res
           .status(400)
           .json({
             error:
               "Invalid device"
+          });
+      }
+
+
+      const deviceRecord = await get(
+        `
+        SELECT id, device_code, device_name, device_type
+        FROM devices
+        WHERE device_type = ?
+        `,
+        [device]
+      );
+
+      if (!deviceRecord) {
+
+        return res
+          .status(400)
+          .json({
+            error:
+              "Unknown device"
           });
       }
 
@@ -106,16 +142,18 @@ const allowedDevices = [
             (
               request_id,
               device,
+              device_id,
               action,
               status,
               "user"
             )
 
-            VALUES (?, ?, ?, 'FAILED', ?)
+            VALUES (?, ?, ?, ?, 'FAILED', ?)
             `,
             [
               requestId,
               device,
+              deviceRecord.id,
               action,
               req.user.username
             ]
@@ -147,16 +185,18 @@ const allowedDevices = [
         (
           request_id,
           device,
+          device_id,
           action,
           status,
           "user"
         )
 
-        VALUES (?, ?, ?, 'PENDING', ?)
+        VALUES (?, ?, ?, ?, 'PENDING', ?)
         `,
         [
           requestId,
           device,
+          deviceRecord.id,
           action,
           req.user.username
         ]
