@@ -5,18 +5,7 @@ const router = express.Router();
 const { get, all } = require("../database");
 
 const { parsePage, parseLimit, getPagination } = require("../utils/pagination");
-
-function normalizeTimeSearch(value) {
-  const search = String(value || "").trim();
-  const match = search.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/);
-
-  if (!match) {
-    return search;
-  }
-
-  const [, day, month, year, rest] = match;
-  return `${year}-${month}-${day}${rest}`;
-}
+const { normalizeTimeSearch, parseSortOrder } = require("../utils/query");
 
 function getLegacySensorSort(sortBy) {
   return {
@@ -45,10 +34,7 @@ router.get("/summary", async (req, res) => {
     }
 
     const sortBy = getLegacySensorSort(req.query.sortBy);
-    const sortOrder =
-      String(req.query.sortOrder || "DESC").toUpperCase() === "ASC"
-        ? "ASC"
-        : "DESC";
+    const sortOrder = parseSortOrder(req.query.sortOrder);
 
     const rows = await all(
       `
@@ -78,7 +64,7 @@ router.get("/summary", async (req, res) => {
   }
 });
 
-// GET /api/sensors?page=1&limit=10&search=19/08/2026&sensor=temperature
+
 router.get("/", async (req, res) => {
   try {
     const page = parsePage(req.query.page);
@@ -89,33 +75,42 @@ router.get("/", async (req, res) => {
     ).trim().toLowerCase();
     const legacySearch =
       req.query.searchBy === "time" ? req.query.keyword : "";
-    const search = String(req.query.search || "").trim();
+    const rawId = String(req.query.id ?? "").trim();
+    const rawValue = String(req.query.value ?? "").trim();
     const timeSearch = normalizeTimeSearch(req.query.time || legacySearch);
 
     let where = "WHERE 1 = 1";
     const params = [];
+
+    if (rawId) {
+      const id = Number(rawId);
+
+      if (!Number.isInteger(id) || id < 1) {
+        return res.status(400).json({
+          error: "ID phải là số nguyên dương",
+        });
+      }
+
+      where += " AND sr.id = ?";
+      params.push(id);
+    }
 
     if (sensorType) {
       where += " AND s.sensor_type = ?";
       params.push(sensorType);
     }
 
-    if (search) {
-      const searchPattern = `%${normalizeTimeSearch(search)}%`;
-      where += `
-        AND (
-          CAST(sr.id AS TEXT) LIKE ?
-          OR s.sensor_code LIKE ?
-          OR s.sensor_name LIKE ?
-          OR CAST(sr.value AS TEXT) LIKE ?
-        )
-      `;
-      params.push(
-        searchPattern,
-        searchPattern,
-        searchPattern,
-        searchPattern
-      );
+    if (rawValue) {
+      const value = Number(rawValue);
+
+      if (!Number.isFinite(value)) {
+        return res.status(400).json({
+          error: "Giá trị phải là một số hợp lệ",
+        });
+      }
+
+      where += " AND sr.value = ?";
+      params.push(value);
     }
 
     if (timeSearch) {
@@ -131,10 +126,7 @@ router.get("/", async (req, res) => {
       time: "sr.time",
     };
     const sortBy = allowedSort[req.query.sortBy] || "sr.time";
-    const sortOrder =
-      String(req.query.sortOrder || "DESC").toUpperCase() === "ASC"
-        ? "ASC"
-        : "DESC";
+    const sortOrder = parseSortOrder(req.query.sortOrder);
     const fromClause = `
       FROM sensor_readings sr
       JOIN sensors s ON s.id = sr.sensor_id

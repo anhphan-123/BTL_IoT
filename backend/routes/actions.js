@@ -5,18 +5,7 @@ const router = express.Router();
 const { get, all } = require("../database");
 
 const { parsePage, parseLimit, getPagination } = require("../utils/pagination");
-
-function normalizeTimeSearch(value) {
-  const search = String(value || "").trim();
-  const match = search.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/);
-
-  if (!match) {
-    return search;
-  }
-
-  const [, day, month, year, rest] = match;
-  return `${year}-${month}-${day}${rest}`;
-}
+const { normalizeTimeSearch, parseSortOrder } = require("../utils/query");
 
 router.get("/", async (req, res) => {
   try {
@@ -109,10 +98,7 @@ router.get("/", async (req, res) => {
       time: "ah.time",
     };
     const sortBy = allowedSort[req.query.sortBy] || "ah.id";
-    const sortOrder =
-      String(req.query.sortOrder || "DESC").toUpperCase() === "ASC"
-        ? "ASC"
-        : "DESC";
+    const sortOrder = parseSortOrder(req.query.sortOrder);
 
     const fromClause = `
       FROM action_history ah
